@@ -90,14 +90,20 @@ class Mbc1 : public DefaultMbc {
 public:
 	explicit Mbc1(MemPtrs &memptrs)
 	: memptrs_(memptrs)
-	, rombank_(1)
-	, rambank_(0)
 	, enableRam_(false)
 	, rambankMode_(false)
-	, bank1_(1)
-	, bank2_(0)
-	, rombank0_(0)
+	, bankReg1_(1)
+	, bankReg2_(0)
 	{
+		updateBanking();
+	}
+
+	inline void updateBanking() {
+		rombank0_ = (bankReg2_ << 5 & 0x60) * rambankMode_;
+		rombank_ = (bankReg2_ << 5 & 0x60) | bankReg1_;
+		rambank_ = rambankMode_ * bankReg2_;
+		setRambank();
+		setRombank();
 	}
 
 	virtual unsigned char curRomBank() const {
@@ -115,23 +121,16 @@ public:
 			setRambank();
 			break;
 		case 1:
-			bank1_ = data & 0x1F ? data & 0x1F : 1;
-			rombank_ = (bank2_ << 5 & 0x60) | bank1_;
-			rombank0_ = (bank2_ << 5 & 0x60) * rambankMode_;
-			setRombank();
+			bankReg1_ = data & 0x1F ? data & 0x1F : 1;
+			updateBanking();
 			break;
 		case 2:
-			bank2_ = data & 3;
-			rombank_ = (bank2_ << 5 & 0x60) | bank1_;
-			rombank0_ = (bank2_ << 5 & 0x60) * rambankMode_;
-			rambank_ = rambankMode_ * bank2_;
-			setRambank();
-			setRombank();
+			bankReg2_ = data & 3;
+			updateBanking();
 			break;
 		case 3:
 			rambankMode_ = data & 1;
-			rambank_ = rambankMode_ * bank2_;
-			setRambank();
+			updateBanking();
 			break;
 		}
 	}
@@ -154,13 +153,13 @@ public:
 
 private:
 	MemPtrs &memptrs_;
-	unsigned char rombank_;
-	unsigned char rambank_;
-	unsigned char bank1_;
-	unsigned char bank2_;
-	unsigned char rombank0_;
 	bool enableRam_;
 	bool rambankMode_;
+	unsigned char bankReg1_;
+	unsigned char bankReg2_;
+	unsigned char rombank0_;
+	unsigned char rombank_;
+	unsigned char rambank_;
 
 	void setRambank() const {
 		memptrs_.setRambank(enableRam_ ? MemPtrs::read_en | MemPtrs::write_en : MemPtrs::disabled,
