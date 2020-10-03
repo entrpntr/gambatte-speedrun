@@ -94,6 +94,9 @@ public:
 	, rambank_(0)
 	, enableRam_(false)
 	, rambankMode_(false)
+	, bank1_(1)
+	, bank2_(0)
+	, rombank0_(0)
 	{
 	}
 
@@ -112,22 +115,23 @@ public:
 			setRambank();
 			break;
 		case 1:
-			rombank_ = rambankMode_ ? data & 0x1F : (rombank_ & 0x60) | (data & 0x1F);
+			bank1_ = data & 0x1F ? data & 0x1F : 1;
+			rombank_ = (bank2_ << 5 & 0x60) | bank1_;
+			rombank0_ = (bank2_ << 5 & 0x60) * rambankMode_;
 			setRombank();
 			break;
 		case 2:
-			if (rambankMode_) {
-				rambank_ = data & 3;
-				setRambank();
-			} else {
-				rombank_ = (data << 5 & 0x60) | (rombank_ & 0x1F);
-				setRombank();
-			}
-
+			bank2_ = data & 3;
+			rombank_ = (bank2_ << 5 & 0x60) | bank1_;
+			rombank0_ = (bank2_ << 5 & 0x60) * rambankMode_;
+			rambank_ = rambankMode_ * bank2_;
+			setRambank();
+			setRombank();
 			break;
 		case 3:
-			// Should this take effect immediately rather?
 			rambankMode_ = data & 1;
+			rambank_ = rambankMode_ * bank2_;
+			setRambank();
 			break;
 		}
 	}
@@ -152,17 +156,21 @@ private:
 	MemPtrs &memptrs_;
 	unsigned char rombank_;
 	unsigned char rambank_;
+	unsigned char bank1_;
+	unsigned char bank2_;
+	unsigned char rombank0_;
 	bool enableRam_;
 	bool rambankMode_;
-
-	static unsigned adjustedRombank(unsigned bank) { return bank & 0x1F ? bank : bank | 1; }
 
 	void setRambank() const {
 		memptrs_.setRambank(enableRam_ ? MemPtrs::read_en | MemPtrs::write_en : MemPtrs::disabled,
 		                    rambank_ & (rambanks(memptrs_) - 1));
 	}
 
-	void setRombank() const { memptrs_.setRombank(adjustedRombank(rombank_) & (rombanks(memptrs_) - 1)); }
+	void setRombank() const {
+		memptrs_.setRombank0(rombank0_ & (rombanks(memptrs_) - 1));
+		memptrs_.setRombank(std::max((unsigned) rombank_, 1u) & (rombanks(memptrs_) - 1));
+	}
 };
 
 class Mbc1Multi64 : public Mbc {
@@ -526,7 +534,7 @@ private:
 
 	void setRambank() const {
 		huc3_->setRamflag(ramflag_);
-        
+
 		unsigned flags;
 		if(ramflag_ >= 0x0B && ramflag_ < 0x0F) {
 			// System registers mode
@@ -665,8 +673,8 @@ bool hasBattery(unsigned char headerByte0x147) {
 	case 0x13:
 	case 0x1B:
 	case 0x1E:
-    	case 0xFE: // huc3
-	case 0xFF: 
+	case 0xFE: // huc3
+	case 0xFF:
 		return true;
 	}
 
@@ -854,7 +862,7 @@ LoadRes Cartridge::loadROM(std::string const &romfile,
 	case type_huc3:
 		huc3_.set(true);
 		mbc_.reset(new HuC3(memptrs_, &huc3_));
-		break;        
+		break;
 	}
 
 	return LOADRES_OK;
